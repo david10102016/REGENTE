@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Regente — U.E. Técnico Humanística Buena Fe</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
   --c0:  #0a1e36;
@@ -667,7 +668,7 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
 // ══════════════════════════════════════════════
 // CONFIGURACIÓN — reemplazá con tu URL de Apps Script
 // ══════════════════════════════════════════════
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHLXPyuK7S3B6qz1ak5EDgxi8TGd_GhcyP7S1KZjmcz0WtV3bEXeNV5ArfbEuoMD1y/exec';
+const SCRIPT_URL = 'TU_URL_APPS_SCRIPT_AQUI';
 const U = 'regente', P = 'buenafe2026';
 
 // ══════════════════════════════════════════════
@@ -922,20 +923,27 @@ function simXLS(input){
   const par=document.getElementById('imp-par').value;
   const tur=document.getElementById('imp-turno').value;
   if(!niv||!gra||!par||!tur){ toast('Seleccioná nivel, grado, paralelo y turno primero','err'); input.value=''; return; }
-  pendXLS=[
-    {carnet:'14808516',nombre_completo:'FLORES CAMARGO WENDI NICOL'},
-    {carnet:'14465027',nombre_completo:'FLORES COA CRISTIAN YAHIR'},
-    {carnet:'13601244',nombre_completo:'GARCIA CASTRO LEITON'},
-    {carnet:'13670030',nombre_completo:'GRIMALDIS LOAYZA NEYMAR'},
-    {carnet:'14874080',nombre_completo:'GUTIERREZ QUISPE ABIGAIL'},
-    {carnet:'16328886',nombre_completo:'HUARACHI MIRANDA ALEJANDRA'},
-  ];
-  document.getElementById('prev-xls-list').innerHTML=
-    `<div class="prevrow" style="background:var(--c4);font-size:.72rem;color:var(--c1);font-weight:600">
-      Se asignará: ${niv} | ${gra} ${par} | Turno ${tur}</div>`+
-    pendXLS.map(a=>`<div class="prevrow"><span class="prevci">${a.carnet}</span><span>${a.nombre_completo}</span></div>`).join('');
-  document.getElementById('prev-xls').style.display='block';
-  toast(`${pendXLS.length} alumnos listos`);
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const data=new Uint8Array(e.target.result);
+    const wb=XLSX.read(data,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    pendXLS=rows.map(r=>({
+      carnet: String(r['carnet']||r['Carnet']||r['CARNET']||'').trim(),
+      nombre_completo: String(r['nombre_completo']||r['Nombre_completo']||r['NOMBRE_COMPLETO']||'')
+        .replace(/\s+/g,' ').trim().toUpperCase()
+    })).filter(a=>a.carnet&&a.nombre_completo);
+    if(!pendXLS.length){ toast('No se encontraron datos. Verificá los encabezados del Excel','err'); return; }
+    document.getElementById('prev-xls-list').innerHTML=
+      `<div class="prevrow" style="background:var(--c4);font-size:.72rem;color:var(--c1);font-weight:600">
+        Se asignará: ${niv} | ${gra} ${par} | Turno ${tur} — ${pendXLS.length} alumnos detectados</div>`+
+      pendXLS.map(a=>`<div class="prevrow"><span class="prevci">${a.carnet}</span><span>${a.nombre_completo}</span></div>`).join('');
+    document.getElementById('prev-xls').style.display='block';
+    toast(`${pendXLS.length} alumnos detectados`,'ok');
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 async function confirmarXLS(){
