@@ -860,11 +860,9 @@ async function confirmarTardanza(){
   try{
     const res = await apiGet({action:'registrarTardanza',...alumnoSel});
     if(!res || res.status!=='ok') throw new Error('Registro fallido');
-    tardHoy.push({id: res.id || `T${Date.now()}`,carnet:alumnoSel.carnet,nombre_completo:alumnoSel.nombre_completo,
-      nivel:alumnoSel.nivel,grado:alumnoSel.grado,paralelo:alumnoSel.paralelo,turno:alumnoSel.turno,
-      fecha:fechaHoy(),hora:horaAhora(),recurrente:c+1>=umbral});
-    document.getElementById('badge-hoy').textContent=tardHoy.length;
     cerrarModal(); toast(`${alumnoSel.nombre_completo.split(' ')[0]} registrado`,'ok');
+    await cargarTardHoy();
+    await actualizarDashboard();
     filtrar(); renderRegistrados();
   }catch(e){ toast('Error al registrar. Verificá conexión.','err'); }
   btn.innerHTML='Confirmar'; btn.disabled=false;
@@ -874,9 +872,10 @@ async function eliminarTardanza(id){
   try{
     const res = await apiGet({action:'eliminarTardanza',id});
     if(!res || res.status!=='ok') throw new Error('Eliminación fallida');
-    tardHoy=tardHoy.filter(t=>t.id!==id);
-    document.getElementById('badge-hoy').textContent=tardHoy.length;
-    renderRegistrados(); filtrar(); toast('Tardanza eliminada');
+    toast('Tardanza eliminada');
+    await cargarTardHoy();
+    await actualizarDashboard();
+    renderRegistrados(); filtrar();
   }catch(e){ toast('Error al eliminar','err'); }
 }
 
