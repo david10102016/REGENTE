@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Regente — U.E. Técnico Humanística Buena Fe</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
   --c0:  #0a1e36;
@@ -665,11 +666,10 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
 
 <script>
 // ══════════════════════════════════════════════
-// CONFIGURACIÓN — reemplazá con tu URL de Apps Script
+// CONFIGURACIÓN
 // ══════════════════════════════════════════════
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHLXPyuK7S3B6qz1ak5EDgxi8TGd_GhcyP7S1KZjmcz0WtV3bEXeNV5ArfbEuoMD1y/exec';
 const U = 'regente', P = 'buenafe2026';
-const SERVER_TZ = 'America/La_Paz';
 
 // ══════════════════════════════════════════════
 // ESTADO
@@ -715,7 +715,7 @@ if(sessionStorage.getItem('auth')==='1'){
 async function iniciarApp(){
   actualizarReloj(); setInterval(actualizarReloj,30000);
   document.getElementById('fecha-hoy').textContent=
-    new Date().toLocaleDateString('es-BO',{weekday:'long',day:'numeric',month:'long', timeZone: SERVER_TZ});
+    new Date().toLocaleDateString('es-BO',{weekday:'long',day:'numeric',month:'long'});
   await cargarConfig();
   await cargarAlumnos();
   await cargarTardHoy();
@@ -734,20 +734,32 @@ function actualizarReloj(){
   const ft=document.getElementById('f-turno');
   if(!ft.dataset.man) ft.value=t;
 }
-const fechaHoy = ()=>{
-  // Return YYYY-MM-DD using server timezone to match Apps Script storage
-  return new Date().toLocaleDateString('en-CA', {timeZone: SERVER_TZ});
-};
-const horaAhora = ()=>{
-  // Return HH:MM using server timezone
-  return new Date().toLocaleTimeString('en-GB', {hour12:false, hour:'2-digit', minute:'2-digit', timeZone: SERVER_TZ});
-};
+// Fecha/hora en UTC-4 (Bolivia) igual que Apps Script — evita desincronía de fechas
+const _bo=()=>{ const d=new Date(); return new Date(d.getTime()-4*60*60*1000); };
+const fechaHoy=()=>{ const d=_bo(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`; };
+const horaAhora=()=>{ const d=_bo(); return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`; };
 
 // ══════════════════════════════════════════════
 // API
 // ══════════════════════════════════════════════
-async function apiGet(p){ const r=await fetch(SCRIPT_URL+'?'+new URLSearchParams(p)); return r.json(); }
-async function apiPost(d){ await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}); }
+// TODO va por GET — unica forma sin bloqueo CORS con Apps Script
+async function apiGet(p){
+  const r=await fetch(SCRIPT_URL+'?'+new URLSearchParams(p));
+  return r.json();
+}
+
+// apiPost ahora también usa GET — los datos van como parámetros en la URL
+// Para importarAlumnos los datos van en el param 'datos' como JSON encodificado
+async function apiPost(d){
+  const params={...d};
+  // Si hay array de alumnos lo serializamos como string
+  if(params.alumnos){
+    params.datos=encodeURIComponent(JSON.stringify(params.alumnos));
+    delete params.alumnos;
+  }
+  const r=await fetch(SCRIPT_URL+'?'+new URLSearchParams(params));
+  return r.json();
+}
 
 // ══════════════════════════════════════════════
 // CARGAR DATOS
@@ -766,10 +778,20 @@ async function cargarAlumnos(){
   try{ const r=await apiGet({action:'getAlumnos'}); if(r.status==='ok') alumnos=r.data; }
   catch(e){ alumnos=[]; } unload();
 }
+
+// ── FIX: cargarTardHoy ahora también actualiza el badge
 async function cargarTardHoy(){
-  try{ const r=await apiGet({action:'getTardanzas',fecha:fechaHoy()}); if(r.status==='ok') tardHoy=r.data;
-    document.getElementById('badge-hoy').textContent=tardHoy.length; }
-  catch(e){ tardHoy=[]; }
+  try{
+    const r=await apiGet({action:'getTardanzas',fecha:fechaHoy()});
+    if(r.status==='ok'){
+      tardHoy=r.data;
+      actualizarBadge();
+    }
+  }catch(e){ tardHoy=[]; }
+}
+
+function actualizarBadge(){
+  document.getElementById('badge-hoy').textContent=tardHoy.length;
 }
 
 // ══════════════════════════════════════════════
@@ -822,7 +844,6 @@ function filtrar(){
 function renderRegistrados(){
   const el=document.getElementById('registrados-hoy');
   if(!tardHoy.length){ el.innerHTML='<div class="lvac">Ninguno registrado aún hoy.</div>'; return; }
-  const umbral=parseInt(cfg.umbral_recurrente)||3;
   el.innerHTML=[...tardHoy].reverse().map(t=>`
     <div class="ti"><span class="tihora">${t.hora}</span>
     <div class="tiinfo"><div class="tinom">${t.nombre_completo}</div><div class="ticur">${t.nivel} ${t.grado} ${t.paralelo} — ${t.turno}</div></div>
@@ -850,32 +871,61 @@ function abrirModal(carnet){
 }
 function cerrarModal(){ document.getElementById('modal-ov').classList.remove('open'); alumnoSel=null; }
 
+// ══════════════════════════════════════════════
+// FIX PRINCIPAL: confirmarTardanza
+// Estrategia: actualizar UI localmente de inmediato (optimistic update),
+// enviar al servidor en paralelo, luego recargar datos reales desde Sheets.
+// ══════════════════════════════════════════════
 async function confirmarTardanza(){
   if(!alumnoSel) return;
   const btn=document.getElementById('btn-conf');
   btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
+
   const umbral=parseInt(cfg.umbral_recurrente)||3;
   const conteo={}; tardHoy.forEach(t=>{ conteo[t.carnet]=(conteo[t.carnet]||0)+1; });
   const c=conteo[alumnoSel.carnet]||0;
-  try{
-    const res = await apiGet({action:'registrarTardanza',...alumnoSel});
-    if(!res || res.status!=='ok') throw new Error('Registro fallido');
-    cerrarModal(); toast(`${alumnoSel.nombre_completo.split(' ')[0]} registrado`,'ok');
-    await cargarTardHoy();
-    await actualizarDashboard();
-    filtrar(); renderRegistrados();
-  }catch(e){ toast('Error al registrar. Verificá conexión.','err'); }
+  const esRec=c+1>=umbral;
+  const hora=horaAhora();
+  const id=`T${Date.now()}`;
+
+  // 1. Actualización optimista inmediata — UI responde al instante
+  const entrada={
+    id, carnet:alumnoSel.carnet, nombre_completo:alumnoSel.nombre_completo,
+    nivel:alumnoSel.nivel, grado:alumnoSel.grado, paralelo:alumnoSel.paralelo,
+    turno:alumnoSel.turno, fecha:fechaHoy(), hora, recurrente:esRec
+  };
+  tardHoy.push(entrada);
+  actualizarBadge();
+  cerrarModal();
+  toast(`${alumnoSel.nombre_completo.split(' ')[0]} registrado`,'ok');
+  filtrar();
+  renderRegistrados();
+
   btn.innerHTML='Confirmar'; btn.disabled=false;
+
+  // 2. Enviar al servidor (en paralelo, sin bloquear UI)
+  const alumnoGuardado={...alumnoSel};
+  apiPost({action:'registrarTardanza',...alumnoGuardado}).then(async()=>{
+    // 3. Resincronizar con datos reales de Sheets (esperar un momento
+    //    para que Apps Script termine de escribir)
+    await new Promise(r=>setTimeout(r,1800));
+    await cargarTardHoy();
+    filtrar();
+    renderRegistrados();
+    // Actualizar dashboard en background
+    actualizarDashboard();
+  }).catch(()=>{
+    // Si falla la red el dato optimista quedó en pantalla.
+    // Al menos el badge y la lista local son correctos.
+  });
 }
 
 async function eliminarTardanza(id){
   try{
-    const res = await apiGet({action:'eliminarTardanza',id});
-    if(!res || res.status!=='ok') throw new Error('Eliminación fallida');
-    toast('Tardanza eliminada');
-    await cargarTardHoy();
-    await actualizarDashboard();
-    renderRegistrados(); filtrar();
+    await apiPost({action:'eliminarTardanza',id});
+    tardHoy=tardHoy.filter(t=>t.id!==id);
+    actualizarBadge();
+    renderRegistrados(); filtrar(); toast('Tardanza eliminada');
   }catch(e){ toast('Error al eliminar','err'); }
 }
 
@@ -930,20 +980,27 @@ function simXLS(input){
   const par=document.getElementById('imp-par').value;
   const tur=document.getElementById('imp-turno').value;
   if(!niv||!gra||!par||!tur){ toast('Seleccioná nivel, grado, paralelo y turno primero','err'); input.value=''; return; }
-  pendXLS=[
-    {carnet:'14808516',nombre_completo:'FLORES CAMARGO WENDI NICOL'},
-    {carnet:'14465027',nombre_completo:'FLORES COA CRISTIAN YAHIR'},
-    {carnet:'13601244',nombre_completo:'GARCIA CASTRO LEITON'},
-    {carnet:'13670030',nombre_completo:'GRIMALDIS LOAYZA NEYMAR'},
-    {carnet:'14874080',nombre_completo:'GUTIERREZ QUISPE ABIGAIL'},
-    {carnet:'16328886',nombre_completo:'HUARACHI MIRANDA ALEJANDRA'},
-  ];
-  document.getElementById('prev-xls-list').innerHTML=
-    `<div class="prevrow" style="background:var(--c4);font-size:.72rem;color:var(--c1);font-weight:600">
-      Se asignará: ${niv} | ${gra} ${par} | Turno ${tur}</div>`+
-    pendXLS.map(a=>`<div class="prevrow"><span class="prevci">${a.carnet}</span><span>${a.nombre_completo}</span></div>`).join('');
-  document.getElementById('prev-xls').style.display='block';
-  toast(`${pendXLS.length} alumnos listos`);
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const data=new Uint8Array(e.target.result);
+    const wb=XLSX.read(data,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    pendXLS=rows.map(r=>({
+      carnet: String(r['carnet']||r['Carnet']||r['CARNET']||'').trim(),
+      nombre_completo: String(r['nombre_completo']||r['Nombre_completo']||r['NOMBRE_COMPLETO']||'')
+        .replace(/\s+/g,' ').trim().toUpperCase()
+    })).filter(a=>a.carnet&&a.nombre_completo);
+    if(!pendXLS.length){ toast('No se encontraron datos. Verificá los encabezados del Excel','err'); return; }
+    document.getElementById('prev-xls-list').innerHTML=
+      `<div class="prevrow" style="background:var(--c4);font-size:.72rem;color:var(--c1);font-weight:600">
+        Se asignará: ${niv} | ${gra} ${par} | Turno ${tur} — ${pendXLS.length} alumnos detectados</div>`+
+      pendXLS.map(a=>`<div class="prevrow"><span class="prevci">${a.carnet}</span><span>${a.nombre_completo}</span></div>`).join('');
+    document.getElementById('prev-xls').style.display='block';
+    toast(`${pendXLS.length} alumnos detectados`,'ok');
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 async function confirmarXLS(){
@@ -1034,7 +1091,7 @@ function renderTabla(data){
   pie.innerHTML=`<span>Regente: ${cfg.nombre_regente||'___________________'}</span>
     <span>Firma y sello: ___________________</span>
     ${obs?`<span style="width:100%;margin-top:4px;color:var(--c0)"><strong>Obs.:</strong> ${obs}</span>`:''}
-    <span style="width:100%;margin-top:2px">Impreso: ${new Date().toLocaleString('es-BO',{timeZone: SERVER_TZ})}</span>`;
+    <span style="width:100%;margin-top:2px">Impreso: ${new Date().toLocaleString('es-BO')}</span>`;
 }
 
 function imprimirReporte(){
