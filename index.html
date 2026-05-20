@@ -892,34 +892,34 @@ async function confirmarTardanza(){
   const btn=document.getElementById('btn-conf');
   btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
 
+  // Guardar copia ANTES de cerrar modal (cerrarModal pone alumnoSel=null)
+  const alumno={...alumnoSel};
   const umbral=parseInt(cfg.umbral_recurrente)||3;
   const conteo={}; tardHoy.forEach(t=>{ conteo[t.carnet]=(conteo[t.carnet]||0)+1; });
-  const c=conteo[alumnoSel.carnet]||0;
+  const c=conteo[alumno.carnet]||0;
   const esRec=c+1>=umbral;
   const hora=horaAhora();
   const id=`T${Date.now()}`;
 
-  // 1. Actualización optimista inmediata — UI responde al instante
-  const entrada={
-    id, carnet:alumnoSel.carnet, nombre_completo:alumnoSel.nombre_completo,
-    nivel:alumnoSel.nivel, grado:alumnoSel.grado, paralelo:alumnoSel.paralelo,
-    turno:alumnoSel.turno, fecha:fechaHoy(), hora, recurrente:esRec
-  };
-  tardHoy.push(entrada);
+  // 1. Actualización optimista — UI responde al instante
+  tardHoy.push({
+    id, carnet:alumno.carnet, nombre_completo:alumno.nombre_completo,
+    nivel:alumno.nivel, grado:alumno.grado, paralelo:alumno.paralelo,
+    turno:alumno.turno, fecha:fechaHoy(), hora, recurrente:esRec
+  });
   actualizarBadge();
-  cerrarModal();
-  toast(`${alumnoSel.nombre_completo.split(' ')[0]} registrado`,'ok');
+  cerrarModal(); // aquí alumnoSel pasa a null — ya no lo usamos
+  toast(`${alumno.nombre_completo.split(' ')[0]} registrado`,'ok');
   filtrar();
   renderRegistrados();
-
   btn.innerHTML='Confirmar'; btn.disabled=false;
 
-  // 2. Enviar al servidor y resincronizar — sin mostrar error aunque falle la red
-  const alumnoGuardado={...alumnoSel};
+  // 2. Enviar al servidor
   try{
-    await apiGet({action:'registrarTardanza',...alumnoGuardado});
+    await apiGet({action:'registrarTardanza',...alumno});
   }catch(e){ console.warn('registrar warn:',e); }
-  // 3. Resincronizar con datos reales de Sheets
+
+  // 3. Resincronizar con Sheets
   await new Promise(r=>setTimeout(r,1500));
   await cargarTardHoy();
   filtrar();
