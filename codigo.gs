@@ -231,12 +231,21 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
 
 /* PRINT */
 @media print{
-  header,nav,#login-screen,.rtipos,.bgrp,.obswrap{display:none!important}
-  main{padding:0!important}
-  .card{box-shadow:none!important;border:1px solid #ccc;margin-bottom:10px}
-  body{background:#fff!important}
-  .twrap{border:1px solid #ccc}
-  table{min-width:unset!important}
+  @page{margin:10mm 8mm;size:A4 portrait}
+  header,nav,#login-screen,.rtipos,.bgrp,.obswrap,#sec-dashboard,#sec-registro,#sec-importar,#sec-config{display:none!important}
+  main{padding:0!important;max-width:100%!important}
+  body{background:#fff!important;font-size:11px}
+  .card{box-shadow:none!important;border:none;margin-bottom:6px;padding:8px 0}
+  .twrap{border:1px solid #ccc;overflow:visible!important}
+  table{min-width:unset!important;width:100%!important;font-size:10px;border-collapse:collapse}
+  th{padding:5px 6px!important;font-size:9px!important;background:#1a3a5c!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  td{padding:4px 6px!important;border-bottom:1px solid #ddd!important}
+  tr:nth-child(even) td{background:#f5f5f5!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tag{font-size:8px!important;padding:2px 5px!important;border:1px solid #ccc!important;border-radius:10px!important}
+  #rep-cab{margin-bottom:6px!important;padding-bottom:6px!important}
+  #rep-pie{margin-top:8px!important;font-size:9px!important}
+  #rep-box{display:block!important}
+  tr{page-break-inside:avoid}
 }
 
 /* DESKTOP */
