@@ -799,7 +799,7 @@ function actualizarBadge(){
 // ══════════════════════════════════════════════
 async function actualizarDashboard(){
   try{
-    const r=await apiGet({action:'getStats'}); if(r.status!=='ok') return; const d=r.data;
+    const r=await apiGet({action:'getStats',fecha:fechaHoy()}); if(r.status!=='ok') return; const d=r.data;
     document.getElementById('st-hoy').textContent=d.tardanzasHoy;
     document.getElementById('st-rec').textContent=d.recurrentes;
     document.getElementById('st-mes').textContent=d.tardanzasMes;
