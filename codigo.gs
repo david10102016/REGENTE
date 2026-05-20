@@ -233,6 +233,8 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
 @media print{
   @page{margin:10mm 8mm;size:A4 portrait}
   header,nav,#login-screen,.rtipos,.bgrp,.obswrap,#sec-dashboard,#sec-registro,#sec-importar,#sec-config{display:none!important}
+  #sec-reportes .card:first-child{display:none!important}
+  #sec-reportes .card:last-child{display:none!important}
   main{padding:0!important;max-width:100%!important}
   body{background:#fff!important;font-size:11px}
   .card{box-shadow:none!important;border:none;margin-bottom:6px;padding:8px 0}
@@ -1125,14 +1127,27 @@ function exportarCSV(){
 // ══════════════════════════════════════════════
 // OBSERVACIÓN AUTOSAVE
 // ══════════════════════════════════════════════
+async function cargarObservacion(){
+  try{
+    const r=await apiGet({action:'getConfig'});
+    if(r.status==='ok'){
+      const obs=r.data['obs_'+fechaHoy()]||'';
+      document.getElementById('obs-txt').value=obs;
+    }
+  }catch(e){}
+}
+
 function autoObs(){
   clearTimeout(obsTimer);
   obsTimer=setTimeout(async()=>{
     const txt=document.getElementById('obs-txt').value.trim();
-    try{ await apiPost({action:'guardarObservacion',observacion:txt,fecha:fechaHoy()});
-      const el=document.getElementById('obs-saved'); el.classList.add('show');
-      setTimeout(()=>el.classList.remove('show'),2000);
-    }catch(e){}
+    try{
+      const r=await apiGet({action:'guardarObservacion',observacion:txt,fecha:fechaHoy()});
+      if(r.status==='ok'){
+        const el=document.getElementById('obs-saved'); el.classList.add('show');
+        setTimeout(()=>el.classList.remove('show'),2000);
+      }
+    }catch(e){ console.warn('obs error',e); }
   },1200);
 }
 
@@ -1147,7 +1162,7 @@ async function guardarConfig(){
     umbral_recurrente:document.getElementById('cfg-umbral').value||'3',
     invierno:document.getElementById('tog-inv').classList.contains('on')?'true':'false'};
   load('Guardando...');
-  try{ await apiPost(datos); cfg={...cfg,...datos}; toast('Configuración guardada','ok'); }
+  try{ await apiGet(datos); cfg={...cfg,...datos}; toast('Configuración guardada','ok'); }
   catch(e){ toast('Error al guardar','err'); } unload();
 }
 
@@ -1160,6 +1175,7 @@ function ir(sec,btn){
   document.getElementById('sec-'+sec).classList.add('activa'); btn.classList.add('on');
   if(sec==='dashboard') actualizarDashboard();
   if(sec==='registro'){ filtrar(); renderRegistrados(); }
+  if(sec==='reportes') cargarObservacion();
 }
 
 // ══════════════════════════════════════════════
