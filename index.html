@@ -231,12 +231,23 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
 
 /* PRINT */
 @media print{
-  header,nav,#login-screen,.rtipos,.bgrp,.obswrap{display:none!important}
-  main{padding:0!important}
-  .card{box-shadow:none!important;border:1px solid #ccc;margin-bottom:10px}
-  body{background:#fff!important}
-  .twrap{border:1px solid #ccc}
-  table{min-width:unset!important}
+  @page{margin:10mm 8mm;size:A4 portrait}
+  header,nav,#login-screen,.rtipos,.bgrp,.obswrap,#sec-dashboard,#sec-registro,#sec-importar,#sec-config{display:none!important}
+  #card-tipo-reporte{display:none!important}
+  #card-observacion{display:none!important}
+  main{padding:0!important;max-width:100%!important}
+  body{background:#fff!important;font-size:11px}
+  .card{box-shadow:none!important;border:none;margin-bottom:6px;padding:8px 0}
+  .twrap{border:1px solid #ccc;overflow:visible!important}
+  table{min-width:unset!important;width:100%!important;font-size:10px;border-collapse:collapse}
+  th{padding:5px 6px!important;font-size:9px!important;background:#1a3a5c!important;color:#fff!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  td{padding:4px 6px!important;border-bottom:1px solid #ddd!important}
+  tr:nth-child(even) td{background:#f5f5f5!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .tag{font-size:8px!important;padding:2px 5px!important;border:1px solid #ccc!important;border-radius:10px!important}
+  #rep-cab{margin-bottom:6px!important;padding-bottom:6px!important}
+  #rep-pie{margin-top:8px!important;font-size:9px!important}
+  #rep-box{display:block!important}
+  tr{page-break-inside:avoid}
 }
 
 /* DESKTOP */
@@ -507,7 +518,7 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
 
 <!-- REPORTES -->
 <section class="sec" id="sec-reportes">
-  <div class="card">
+  <div class="card" id="card-tipo-reporte">
     <div class="chdr">
       <div class="cico">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -557,7 +568,7 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
   </div>
 
   <!-- OBSERVACIÓN -->
-  <div class="card">
+  <div class="card" id="card-observacion">
     <div class="chdr">
       <div class="cico">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -666,7 +677,7 @@ tr.rrow td:first-child{border-left:3px solid var(--am)}
 
 <script>
 // ══════════════════════════════════════════════
-// CONFIGURACIÓN — reemplazá con tu URL de Apps Script
+// CONFIGURACIÓN
 // ══════════════════════════════════════════════
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxHLXPyuK7S3B6qz1ak5EDgxi8TGd_GhcyP7S1KZjmcz0WtV3bEXeNV5ArfbEuoMD1y/exec';
 const U = 'regente', P = 'buenafe2026';
@@ -734,14 +745,32 @@ function actualizarReloj(){
   const ft=document.getElementById('f-turno');
   if(!ft.dataset.man) ft.value=t;
 }
-const fechaHoy=()=>{ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-const horaAhora=()=>{ const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
+// Fecha/hora en UTC-4 (Bolivia) igual que Apps Script — evita desincronía de fechas
+const _bo=()=>{ const d=new Date(); return new Date(d.getTime()-4*60*60*1000); };
+const fechaHoy=()=>{ const d=_bo(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`; };
+const horaAhora=()=>{ const d=_bo(); return `${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`; };
 
 // ══════════════════════════════════════════════
 // API
 // ══════════════════════════════════════════════
-async function apiGet(p){ const r=await fetch(SCRIPT_URL+'?'+new URLSearchParams(p)); return r.json(); }
-async function apiPost(d){ await fetch(SCRIPT_URL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}); }
+// TODO va por GET — unica forma sin bloqueo CORS con Apps Script
+async function apiGet(p){
+  const r=await fetch(SCRIPT_URL+'?'+new URLSearchParams(p));
+  return r.json();
+}
+
+// apiPost ahora también usa GET — los datos van como parámetros en la URL
+// Para importarAlumnos los datos van en el param 'datos' como JSON encodificado
+async function apiPost(d){
+  const params={...d};
+  // Si hay array de alumnos lo serializamos como string
+  if(params.alumnos){
+    params.datos=encodeURIComponent(JSON.stringify(params.alumnos));
+    delete params.alumnos;
+  }
+  const r=await fetch(SCRIPT_URL+'?'+new URLSearchParams(params));
+  return r.json();
+}
 
 // ══════════════════════════════════════════════
 // CARGAR DATOS
@@ -760,10 +789,20 @@ async function cargarAlumnos(){
   try{ const r=await apiGet({action:'getAlumnos'}); if(r.status==='ok') alumnos=r.data; }
   catch(e){ alumnos=[]; } unload();
 }
+
+// ── FIX: cargarTardHoy ahora también actualiza el badge
 async function cargarTardHoy(){
-  try{ const r=await apiGet({action:'getTardanzas',fecha:fechaHoy()}); if(r.status==='ok') tardHoy=r.data;
-    document.getElementById('badge-hoy').textContent=tardHoy.length; }
-  catch(e){ tardHoy=[]; }
+  try{
+    const r=await apiGet({action:'getTardanzas',fecha:fechaHoy()});
+    if(r.status==='ok'){
+      tardHoy=r.data;
+      actualizarBadge();
+    }
+  }catch(e){ tardHoy=[]; }
+}
+
+function actualizarBadge(){
+  document.getElementById('badge-hoy').textContent=tardHoy.length;
 }
 
 // ══════════════════════════════════════════════
@@ -771,7 +810,7 @@ async function cargarTardHoy(){
 // ══════════════════════════════════════════════
 async function actualizarDashboard(){
   try{
-    const r=await apiGet({action:'getStats'}); if(r.status!=='ok') return; const d=r.data;
+    const r=await apiGet({action:'getStats',fecha:fechaHoy()}); if(r.status!=='ok') return; const d=r.data;
     document.getElementById('st-hoy').textContent=d.tardanzasHoy;
     document.getElementById('st-rec').textContent=d.recurrentes;
     document.getElementById('st-mes').textContent=d.tardanzasMes;
@@ -816,7 +855,6 @@ function filtrar(){
 function renderRegistrados(){
   const el=document.getElementById('registrados-hoy');
   if(!tardHoy.length){ el.innerHTML='<div class="lvac">Ninguno registrado aún hoy.</div>'; return; }
-  const umbral=parseInt(cfg.umbral_recurrente)||3;
   el.innerHTML=[...tardHoy].reverse().map(t=>`
     <div class="ti"><span class="tihora">${t.hora}</span>
     <div class="tiinfo"><div class="tinom">${t.nombre_completo}</div><div class="ticur">${t.nivel} ${t.grado} ${t.paralelo} — ${t.turno}</div></div>
@@ -844,30 +882,56 @@ function abrirModal(carnet){
 }
 function cerrarModal(){ document.getElementById('modal-ov').classList.remove('open'); alumnoSel=null; }
 
+// ══════════════════════════════════════════════
+// FIX PRINCIPAL: confirmarTardanza
+// Estrategia: actualizar UI localmente de inmediato (optimistic update),
+// enviar al servidor en paralelo, luego recargar datos reales desde Sheets.
+// ══════════════════════════════════════════════
 async function confirmarTardanza(){
   if(!alumnoSel) return;
   const btn=document.getElementById('btn-conf');
   btn.innerHTML='<span class="spin"></span>'; btn.disabled=true;
+
   const umbral=parseInt(cfg.umbral_recurrente)||3;
   const conteo={}; tardHoy.forEach(t=>{ conteo[t.carnet]=(conteo[t.carnet]||0)+1; });
   const c=conteo[alumnoSel.carnet]||0;
-  try{
-    await apiPost({action:'registrarTardanza',...alumnoSel});
-    tardHoy.push({id:`T${Date.now()}`,carnet:alumnoSel.carnet,nombre_completo:alumnoSel.nombre_completo,
-      nivel:alumnoSel.nivel,grado:alumnoSel.grado,paralelo:alumnoSel.paralelo,turno:alumnoSel.turno,
-      fecha:fechaHoy(),hora:horaAhora(),recurrente:c+1>=umbral});
-    document.getElementById('badge-hoy').textContent=tardHoy.length;
-    cerrarModal(); toast(`${alumnoSel.nombre_completo.split(' ')[0]} registrado`,'ok');
-    filtrar(); renderRegistrados();
-  }catch(e){ toast('Error al registrar. Verificá conexión.','err'); }
+  const esRec=c+1>=umbral;
+  const hora=horaAhora();
+  const id=`T${Date.now()}`;
+
+  // 1. Actualización optimista inmediata — UI responde al instante
+  const entrada={
+    id, carnet:alumnoSel.carnet, nombre_completo:alumnoSel.nombre_completo,
+    nivel:alumnoSel.nivel, grado:alumnoSel.grado, paralelo:alumnoSel.paralelo,
+    turno:alumnoSel.turno, fecha:fechaHoy(), hora, recurrente:esRec
+  };
+  tardHoy.push(entrada);
+  actualizarBadge();
+  cerrarModal();
+  toast(`${alumnoSel.nombre_completo.split(' ')[0]} registrado`,'ok');
+  filtrar();
+  renderRegistrados();
+
   btn.innerHTML='Confirmar'; btn.disabled=false;
+
+  // 2. Enviar al servidor y resincronizar — sin mostrar error aunque falle la red
+  const alumnoGuardado={...alumnoSel};
+  try{
+    await apiGet({action:'registrarTardanza',...alumnoGuardado});
+  }catch(e){ console.warn('registrar warn:',e); }
+  // 3. Resincronizar con datos reales de Sheets
+  await new Promise(r=>setTimeout(r,1500));
+  await cargarTardHoy();
+  filtrar();
+  renderRegistrados();
+  actualizarDashboard();
 }
 
 async function eliminarTardanza(id){
   try{
     await apiPost({action:'eliminarTardanza',id});
     tardHoy=tardHoy.filter(t=>t.id!==id);
-    document.getElementById('badge-hoy').textContent=tardHoy.length;
+    actualizarBadge();
     renderRegistrados(); filtrar(); toast('Tardanza eliminada');
   }catch(e){ toast('Error al eliminar','err'); }
 }
@@ -1033,7 +1097,7 @@ function renderTabla(data){
   const obs=document.getElementById('obs-txt').value.trim();
   pie.innerHTML=`<span>Regente: ${cfg.nombre_regente||'___________________'}</span>
     <span>Firma y sello: ___________________</span>
-    ${obs?`<span style="width:100%;margin-top:4px;color:var(--c0)"><strong>Obs.:</strong> ${obs}</span>`:''}
+    ${obs?`<span style="width:100%;margin-top:4px;color:var(--c0)"><strong>Obs.:</strong> ${obs}</span>`:'<span style="width:100%;margin-top:4px;color:var(--c0)"><strong>Obs.:</strong> ___________________</span>'}
     <span style="width:100%;margin-top:2px">Impreso: ${new Date().toLocaleString('es-BO')}</span>`;
 }
 
@@ -1059,14 +1123,27 @@ function exportarCSV(){
 // ══════════════════════════════════════════════
 // OBSERVACIÓN AUTOSAVE
 // ══════════════════════════════════════════════
+async function cargarObservacion(){
+  try{
+    const r=await apiGet({action:'getConfig'});
+    if(r.status==='ok'){
+      const obs=r.data['obs_'+fechaHoy()]||'';
+      document.getElementById('obs-txt').value=obs;
+    }
+  }catch(e){}
+}
+
 function autoObs(){
   clearTimeout(obsTimer);
   obsTimer=setTimeout(async()=>{
     const txt=document.getElementById('obs-txt').value.trim();
-    try{ await apiPost({action:'guardarObservacion',observacion:txt,fecha:fechaHoy()});
-      const el=document.getElementById('obs-saved'); el.classList.add('show');
-      setTimeout(()=>el.classList.remove('show'),2000);
-    }catch(e){}
+    try{
+      const r=await apiGet({action:'guardarObservacion',observacion:txt,fecha:fechaHoy()});
+      if(r.status==='ok'){
+        const el=document.getElementById('obs-saved'); el.classList.add('show');
+        setTimeout(()=>el.classList.remove('show'),2000);
+      }
+    }catch(e){ console.warn('obs error',e); }
   },1200);
 }
 
@@ -1081,7 +1158,7 @@ async function guardarConfig(){
     umbral_recurrente:document.getElementById('cfg-umbral').value||'3',
     invierno:document.getElementById('tog-inv').classList.contains('on')?'true':'false'};
   load('Guardando...');
-  try{ await apiPost(datos); cfg={...cfg,...datos}; toast('Configuración guardada','ok'); }
+  try{ await apiGet(datos); cfg={...cfg,...datos}; toast('Configuración guardada','ok'); }
   catch(e){ toast('Error al guardar','err'); } unload();
 }
 
@@ -1094,6 +1171,7 @@ function ir(sec,btn){
   document.getElementById('sec-'+sec).classList.add('activa'); btn.classList.add('on');
   if(sec==='dashboard') actualizarDashboard();
   if(sec==='registro'){ filtrar(); renderRegistrados(); }
+  if(sec==='reportes') cargarObservacion();
 }
 
 // ══════════════════════════════════════════════
